@@ -151,7 +151,7 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 		mcnflag.StringFlag{
 			EnvVar: "VSPHERE_HOSTSYSTEM",
 			Name:   "vmwarevsphere-hostsystem",
-			Usage:  "vSphere compute resource where the docker VM will be instantiated (use <cluster>/* or <cluster>/<host> if using a cluster)",
+			Usage:  "vSphere compute resource where the docker VM will be instantiated. This can be omitted if using a cluster with DRS.",
 		},
 	}
 }
@@ -354,9 +354,13 @@ func (d *Driver) PreCreateCheck() error {
 		return err
 	}
 
-	hs, err := f.HostSystemOrDefault(ctx, d.HostSystem)
-	if err != nil {
-		return err
+	var hs *object.HostSystem
+	if d.HostSystem != "" {
+		var err error
+		hs, err = f.HostSystemOrDefault(ctx, d.HostSystem)
+		if err != nil {
+			return err
+		}
 	}
 
 	// ResourcePool
@@ -365,9 +369,14 @@ func (d *Driver) PreCreateCheck() error {
 		if _, err := f.ResourcePool(ctx, d.Pool); err != nil {
 			return err
 		}
-	} else {
+	} else if hs != nil {
 		// Pick default Resource Pool for Host System
 		if _, err := hs.ResourcePool(ctx); err != nil {
+			return err
+		}
+	} else {
+		// Pick the default Resource Pool for the Datacenter.
+		if _, err := f.DefaultResourcePool(ctx); err != nil {
 			return err
 		}
 	}
@@ -421,9 +430,13 @@ func (d *Driver) Create() error {
 		return err
 	}
 
-	hs, err := f.HostSystemOrDefault(ctx, d.HostSystem)
-	if err != nil {
-		return err
+	var hs *object.HostSystem
+	if d.HostSystem != "" {
+		var err error
+		hs, err = f.HostSystemOrDefault(ctx, d.HostSystem)
+		if err != nil {
+			return err
+		}
 	}
 
 	var rp *object.ResourcePool
@@ -433,9 +446,15 @@ func (d *Driver) Create() error {
 		if err != nil {
 			return err
 		}
-	} else {
+	} else if d.HostSystem != "" {
 		// Pick default Resource Pool for Host System
 		rp, err = hs.ResourcePool(ctx)
+		if err != nil {
+			return err
+		}
+	} else {
+		// Pick the default Resource Pool for the Datacenter.
+		rp, err = f.DefaultResourcePool(ctx)
 		if err != nil {
 			return err
 		}
